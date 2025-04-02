@@ -1,5 +1,8 @@
 #include <gtkmm.h>
+#include <cstdlib>
+#include <fstream>
 #include <functional>
+#include <iostream>
 #include <memory>
 #include <vector>
 
@@ -9,6 +12,7 @@ public:
     Todo(const std::string& content, std::function<void(Todo*)> remove_callback);
     std::string get_content() const;
     bool is_done() const;
+    void set_done(bool state);
     void remove_button_on_click(Todo& todo);
 
 private:
@@ -28,8 +32,9 @@ class TodoList : public Gtk::Box
 {
 public:
     TodoList();
-    void add_todo(const std::string& content);
+    void add_todo(const std::string& content, bool done = false);
     void delete_todo(Todo *todo);
+    const std::vector<std::unique_ptr<Todo>>& get_todos() const;
 
 private:
     std::vector<std::unique_ptr<Todo>> m_Todos;
@@ -39,8 +44,11 @@ class MainWindow : public Gtk::Window
 {
 public:
     MainWindow();
+    ~MainWindow();
 
 private:
+    void load_config_file();
+    void save_config_file();
     void button_on_click();
 
 private:
@@ -87,6 +95,12 @@ bool Todo::is_done() const
     return m_Done;
 }
 
+void Todo::set_done(bool state)
+{
+    m_Done = state;
+    m_Checkbox.set_active(m_Done);
+}
+
 void Todo::checkbox_on_click()
 {
     m_Done = m_Checkbox.get_active();
@@ -98,11 +112,12 @@ TodoList::TodoList()
     set_vexpand(true);
 }
 
-void TodoList::add_todo(const std::string& content)
+void TodoList::add_todo(const std::string& content, bool done/*= false*/)
 {
     auto todo = std::make_unique<Todo>(content, [this](Todo *todo) {
         delete_todo(todo);
     });
+    todo->set_done(done);
     m_Todos.push_back(std::move(todo));
     append(*m_Todos.back());
 }
@@ -118,10 +133,17 @@ void TodoList::delete_todo(Todo *todo)
     }
 }
 
+const std::vector<std::unique_ptr<Todo>>& TodoList::get_todos() const
+{
+    return m_Todos;
+}
+
 MainWindow::MainWindow()
 {
     set_title("gtodo");
-    set_default_size(300, 400);
+    set_default_size(400, 500);
+
+    load_config_file();
 
     m_Box.set_orientation(Gtk::Orientation::VERTICAL);
     m_Box.set_margin(10);
@@ -133,10 +155,10 @@ MainWindow::MainWindow()
 
     m_TodosFrame.set_child(m_TodosScrolledWindow);
 
-    m_TodoList.add_todo("Walk the dog");
-    m_TodoList.add_todo("Buy coffe");
-    m_TodoList.add_todo("Do homework");
-    m_TodoList.add_todo("Finish the todo app");
+    // m_TodoList.add_todo("Walk the dog");
+    // m_TodoList.add_todo("Buy coffe");
+    // m_TodoList.add_todo("Do homework");
+    // m_TodoList.add_todo("Finish the todo app");
     m_TodosScrolledWindow.set_child(m_TodoList);
 
     m_TextInput.set_placeholder_text("New todo");
@@ -151,6 +173,64 @@ MainWindow::MainWindow()
     m_InputBox.append(m_AddButton);
 
     m_Box.append(m_InputBox);
+}
+
+MainWindow::~MainWindow()
+{
+    save_config_file();
+}
+
+void MainWindow::load_config_file()
+{
+    std::ifstream config_file;
+    const char *home_dir = getenv("HOME");
+    if (home_dir != NULL) {
+        std::string config_path(home_dir);
+        config_path.append("/.gtodo");
+        config_file.open(config_path);
+    }
+
+    if (!config_file.is_open()) {
+        return;
+    }
+
+    std::string line;
+    while (std::getline(config_file, line)) {
+        std::stringstream ss(line);
+        bool done;
+        std::string content;
+
+        ss >> done;
+        ss >> std::ws;
+        std::getline(ss, content);
+
+        m_TodoList.add_todo(content, done);
+    }
+
+    config_file.close();
+}
+
+void MainWindow::save_config_file()
+{
+    std::ofstream config_file;
+    const char *home_dir = getenv("HOME");
+    if (home_dir != NULL) {
+        std::string config_path(home_dir);
+        config_path.append("/.gtodo");
+        config_file.open(config_path);
+    }
+
+    if (!config_file.is_open()) {
+        return;
+    }
+
+    for (const auto& todo : m_TodoList.get_todos()) {
+        config_file << todo->is_done() << ' ';
+        config_file << todo->get_content();
+        config_file << '\n';
+    }
+
+    config_file.close();
 }
 
 void MainWindow::button_on_click()
