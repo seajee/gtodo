@@ -6,3 +6,6 @@ all: gtodo
 
 gtodo: main.cpp
 	$(CXX) $(CXXFLAGS) -o gtodo main.cpp $(LDFLAGS)
+
+clean:
+	rm -rf gtodo
